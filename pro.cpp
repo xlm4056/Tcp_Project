@@ -15,7 +15,7 @@ void * acceptThread(void * arg);
 void * readwriteThread(void * arg);
 void ServerModel()
 {
-	printf("\033[2J");
+	printf("\033[2J");                                                     //清屏
 	printf("------------Servers Model-------------\n");
 	struct sockaddr_in saddr;
 	memset(&saddr,0,sizeof(saddr));
@@ -49,10 +49,10 @@ void ServerModel()
 		close(sfd);
 		exit(1);
 	}
-	pthread_mutex_init(&heart_mutex,NULL);             //initalize heart_mutex to protect
+	pthread_mutex_init(&heart_mutex,NULL);                                  //initalize heart_mutex to protect
 	//create a thread to check heart
 	pthread_t heart;
-	if(pthread_create(&heart,NULL,heartThread,NULL)!=0)
+	if(pthread_create(&heart,NULL,heartThread,NULL)!=0)                     //新建心跳检测线程
 	{
 		fprintf(stderr,"pthread_create heart was failed:%s\n",strerror(errno));
 		close(sfd);
@@ -60,7 +60,7 @@ void ServerModel()
 	}
 	//create a thread to check server fd
 	pthread_t acpt;
-	if(pthread_create(&acpt,NULL,acceptThread,&sfd)!=0)
+	if(pthread_create(&acpt,NULL,acceptThread,&sfd)!=0)                     //新建Accept线程等待客户端连接
 	{
 		fprintf(stderr,"pthread_create acpt was failed:%s\n",strerror(errno));
 		close(sfd);
@@ -90,7 +90,7 @@ void * acceptThread(void * arg)
 		FD_SET(sfd,&acpset);
 		timeout.tv_sec=0;
 		timeout.tv_usec=10000;
-		int res=select(sfd+1,&acpset,NULL,NULL,&timeout);
+		int res=select(sfd+1,&acpset,NULL,NULL,&timeout);              //可读之后再accept
 		if(res==0||res<0)
 		{
 			//timeout and ouccors error
@@ -124,7 +124,7 @@ void * acceptThread(void * arg)
 				++curcnt;
 				//create a thread to read and write
 				pthread_t rwt;
-				if(pthread_create(&rwt,NULL,readwriteThread,cinfo)!=0)
+				if(pthread_create(&rwt,NULL,readwriteThread,cinfo)!=0)          //新建读写线程处理该客户端
 				{
 					fprintf(stderr,"pthread_create rwt was failed:%s\n",strerror(errno));
 					close(s);
@@ -358,13 +358,49 @@ void ClientMode()
 			close(cfd);
 			exit(1);
 		}
+	
 		int socklen=sizeof(struct sockaddr_in);
-		if(connect(cfd,(struct sockaddr*)&saddr,socklen)==-1)
+		if(connect(cfd,(struct sockaddr*)&saddr,socklen)==-1)                         //阻塞模式连接
 		{
 			fprintf(stderr,"connect was failed:%s\n",strerror(errno));
 			close(cfd);
 			exit(1);
 		}
+		////////////////////////////////////////////////////////////////////////////////////
+		////////////////////////////////////////////////////////////////////////////////////
+		//非阻塞模式连接的实例：这段代码很成熟
+		unsigned long opt=1;
+		int waittime=5;                                          //非阻塞模式5s超时
+		if(ioctl(cfd,FIONBIO,&opt)==-1)
+		{
+			return false;
+		}
+		int ret=connect(cfd,(struct sockaddr*)&saddr,socklen);
+		if(ret==-1)
+		{
+			struct timeval tv;
+			tv.tv_sec=waittime;
+			tv.tv_usec=0;
+			fd_set rset;
+			FD_ZERO(&rset);
+			FD_SET(cfd,&rset);
+			ret=select(cfd+1,NULL,&rset,NULL,&tv);
+			if(ret<=0)
+			{
+				fprintf(stderr,"连接服务器失败\n");
+				close(cfd);
+				cfd=-1;
+				return -1;
+			}
+			else
+			{
+				ret=false;
+			}
+		}
+		printf("连接服务器成功\n");
+		return cfd;
+		////////////////////////////////////////////////////////////////////////////////////
+		////////////////////////////////////////////////////////////////////////////////////
 		//Send One Time Config Frame
 		struct ConfFrame cf;
 		memset(&cf,0,sizeof(cf));
